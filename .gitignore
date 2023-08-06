@@ -1,3 +1,10 @@
+# Games-related folders
+games/
+icons/
+*.alauncher
+games.json
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
