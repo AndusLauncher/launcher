@@ -21,7 +21,7 @@ class GameLauncher(QMainWindow):
 
         self.selected_game_info = None
         self.setWindowTitle("Andus Launcher")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 1100, 700)
         self.setWindowFlag(Qt.FramelessWindowHint)
         apply_stylesheet(self, theme='dark_blue.xml')
 
