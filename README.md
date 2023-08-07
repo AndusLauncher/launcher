@@ -6,7 +6,7 @@ Unpack it and run ALauncher.exe (on Windows) or ALauncher (on Linux)
 You should now see an interface with a game list on the left side and game details on the right.
 Just select your game, click "Download" and you can play it seconds* after!
 
-* - _Depends on internet speed, and game's server speed_
+_`* Depends on internet speed, and game's server speed`_
 
 ## How to contribute (Game Dev)
 _Requires hosting your game downloads somewhere else (if you can't afford your own server, GitHub is pretty nice)_
