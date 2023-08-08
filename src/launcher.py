@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLis
 from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtCore import Qt, QSize
 from qt_material import apply_stylesheet
-from custom_title_bar import CustomTitleBar
+from src.customs.custom_title_bar import CustomTitleBar
 
 
 class GameLauncher(QMainWindow):
