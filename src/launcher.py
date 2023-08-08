@@ -6,11 +6,12 @@ import json
 import urllib.request
 import zipfile
 
+import feedparser
 import semver
 from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem, QLabel, \
-    QPushButton, QFrame, QProgressDialog, QMessageBox, QLineEdit, QMenu, QApplication
-from PyQt5.QtGui import QFont, QIcon
-from PyQt5.QtCore import Qt, QSize
+    QPushButton, QFrame, QProgressDialog, QMessageBox, QLineEdit, QMenu, QApplication, QDialog, QTextBrowser
+from PyQt5.QtGui import QFont, QIcon, QDesktopServices
+from PyQt5.QtCore import Qt, QSize, QUrl
 from qt_material import apply_stylesheet
 from src.customs.custom_title_bar import CustomTitleBar
 
@@ -69,11 +70,13 @@ class GameLauncher(QMainWindow):
         self.uninstall_action = self.options_menu.addAction("Uninstall")
         self.open_directory_action = self.options_menu.addAction("Open Game Directory")
         self.open_game_website_action = self.options_menu.addAction("Open Website")
+        self.updates_action = self.options_menu.addAction("Updates")
         self.options_button.setMenu(self.options_menu)
         self.details_layout.addWidget(self.options_button, alignment=Qt.AlignRight)
         self.uninstall_action.triggered.connect(self.uninstall_game)
         self.open_directory_action.triggered.connect(self.open_game_directory)
         self.open_game_website_action.triggered.connect(self.open_game_website)
+        self.updates_action.triggered.connect(self.open_updates_rss_reader)
         self.options_button.setVisible(False)
 
         self.icon_label = QLabel()
@@ -85,14 +88,18 @@ class GameLauncher(QMainWindow):
         self.name_label = QLabel()
         self.name_label.setStyleSheet("font: bold 24px 'Roboto'; qproperty-alignment: AlignCenter;")
         self.name_and_developer_layout.addWidget(self.name_label, alignment=Qt.AlignCenter)
+        self.status_label = QLabel()
+        self.status_label.setStyleSheet("font: 12px 'Roboto'; qproperty-alignment: AlignCenter;")
+        self.name_and_developer_layout.addWidget(self.status_label, alignment=Qt.AlignCenter)
         self.developer_label = QLabel()
-        self.developer_label.setStyleSheet("font: 14px 'Roboto'; qproperty-alignment: AlignCenter;")
+        self.developer_label.setStyleSheet("font: 16px 'Roboto'; qproperty-alignment: AlignCenter;")
         self.name_and_developer_layout.addWidget(self.developer_label, alignment=Qt.AlignCenter)
 
         self.details_layout.addLayout(self.name_and_developer_layout)
 
         self.description_label = QLabel()
         self.description_label.setWordWrap(True)
+        self.description_label.setStyleSheet("font: 16px 'Roboto';")
         self.details_layout.addWidget(self.description_label)
 
         self.play_button = QPushButton("Play")
@@ -158,6 +165,7 @@ class GameLauncher(QMainWindow):
         if game_info:
             self.name_label.setText(game_info["name"])
             self.developer_label.setText(game_info["developer"])
+            self.status_label.setText("Status: " + game_info["devstatus"])
             self.description_label.setText("Description: " + game_info["description"])
             icon_path = os.path.join("icons", f"{game_info['ID']}.png")
             icon = QIcon(icon_path)
@@ -172,15 +180,22 @@ class GameLauncher(QMainWindow):
             if os.path.exists(os.path.join("games", str(game_info["ID"]))):
                 if version_comparison < 0:
                     self.play_button.setText("Update")
+                    self.play_button.setStyleSheet("background-color: #CC9900; color: white; border: 2px solid "
+                                                   "#A97D00;")
                 else:
                     self.play_button.setText("Play")
+                    self.play_button.setStyleSheet("background-color: #00A859; color: white; border: 2px solid #006B3C;")
             else:
                 self.play_button.setText("Download")
+                self.play_button.setStyleSheet("background-color: #008F9F; color: white;")
             if "website" in game_info:
                 self.open_game_website_action.setVisible(True)
-                self.open_game_website_action.setToolTip(game_info["website"])
             else:
                 self.open_game_website_action.setVisible(False)
+            if 'rss_feed' in game_info:
+                self.updates_action.setVisible(True)
+            else:
+                self.updates_action.setVisible(False)
             self.play_button.setVisible(True)
             self.options_button.setVisible(True)
 
@@ -236,6 +251,7 @@ class GameLauncher(QMainWindow):
             game_folder = os.path.dirname(local_path)
             self.show_progress_dialog("Extracting", "Extracting the game...", self.extract_game, local_path, game_folder)
         else:
+            self.play_button.setText("Play")
             self.update_game_details(self.game_list_widget.currentItem())
 
     def extract_game(self, zip_file_path, extraction_path):
@@ -251,7 +267,7 @@ class GameLauncher(QMainWindow):
             os.remove(zip_file_path)
             self.progress_dialog.close()
             self.play_button.setText("Play")
-            self.play_button.setEnabled(True)
+            self.update_game_details(self.game_list_widget.currentItem())
 
     def show_progress_dialog(self, title, label, callback, *args):
         self.progress_dialog = QProgressDialog(label, "Cancel", 0, 100, self)
@@ -279,7 +295,7 @@ class GameLauncher(QMainWindow):
                 json_file.seek(0)
                 json.dump(new_data, json_file, indent=4)
                 json_file.truncate()
-                self.games = new_data["games"]  # Update the games list
+                self.games = new_data["games"]
         except urllib.error.URLError as e:
             print("Error updating local game list:", e)
 
@@ -344,7 +360,7 @@ class GameLauncher(QMainWindow):
             try:
                 shutil.rmtree(game_folder)
                 print(f"Game uninstalled: {game_folder}")
-                self.play_button.setEnabled(False)
+                self.update_game_details(self.game_list_widget.currentItem())
             except Exception as e:
                 print("Error uninstalling game:", e)
 
@@ -369,6 +385,16 @@ class GameLauncher(QMainWindow):
                 except Exception as e:
                     print("Error opening the website:", e)
 
+    def open_updates_rss_reader(self):
+        if hasattr(self, 'selected_game_info'):
+            game_info = self.selected_game_info
+            if 'rss_feed' in game_info:
+                rss_feed_url = game_info['rss_feed']
+                game_name = game_info['name']
+                rss_reader_window = RSSReaderWindow(game_name)
+                rss_reader_window.load_feed(rss_feed_url, game_name)
+                rss_reader_window.exec_()
+
     def close_button_clicked(self):
         self.close()
 
@@ -389,3 +415,44 @@ class GameLauncher(QMainWindow):
         version_file_path = os.path.join(game_folder, "installed_version.alauncher")
         with open(version_file_path, "w") as version_file:
             version_file.write(version)
+
+
+class RSSReaderWindow(QDialog):
+    def __init__(self, game_name, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"{game_name} - Updates")
+        self.setGeometry(200, 200, 800, 600)
+
+        self.layout = QVBoxLayout(self)
+        self.setup_ui()
+
+    def setup_ui(self):
+        self.text_browser = QTextBrowser()
+        self.text_browser.setOpenExternalLinks(True)
+        self.text_browser.anchorClicked.connect(self.handle_link_click)
+        self.layout.addWidget(self.text_browser)
+
+    def load_feed(self, feed_url, game_name):
+        feed = feedparser.parse(feed_url)
+
+        html_content = "<style>a { color: #007bff; text-decoration: none; }</style>"
+        html_content += f"<h1>{game_name} Updates</h1>"
+
+        for entry in feed.entries:
+            title = entry.title
+            published_date = entry.published
+            link = entry.link
+            summary = entry.summary
+
+            html_content += f"<h2><a href='{link}'>{title}</a></h2>"
+            html_content += f"<p><em>{published_date}</em></p>"
+            html_content += f"<p>{summary}</p>"
+            html_content += "<hr>"
+
+        self.text_browser.setHtml(html_content)
+
+    def handle_link_click(self, link):
+        url = link.toString()
+        if url.startswith("http://") or url.startswith("https://"):
+            os.system(f"xdg-open '{url}'")
+
