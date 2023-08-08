@@ -71,6 +71,7 @@ class GameLauncher(QMainWindow):
         self.open_directory_action = self.options_menu.addAction("Open Game Directory")
         self.open_game_website_action = self.options_menu.addAction("Open Website")
         self.updates_action = self.options_menu.addAction("Updates")
+        
         self.options_button.setMenu(self.options_menu)
         self.details_layout.addWidget(self.options_button, alignment=Qt.AlignRight)
         self.uninstall_action.triggered.connect(self.uninstall_game)
