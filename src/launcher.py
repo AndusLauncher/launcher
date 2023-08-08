@@ -8,7 +8,7 @@ import zipfile
 
 import semver
 from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem, QLabel, \
-    QPushButton, QFrame, QProgressDialog, QMessageBox
+    QPushButton, QFrame, QProgressDialog, QMessageBox, QLineEdit, QMenu, QApplication
 from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtCore import Qt, QSize
 from qt_material import apply_stylesheet
@@ -19,7 +19,6 @@ class GameLauncher(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.selected_game_info = None
         self.setWindowTitle("Andus Launcher")
         self.setGeometry(100, 100, 1100, 700)
         self.setWindowFlag(Qt.FramelessWindowHint)
@@ -30,29 +29,67 @@ class GameLauncher(QMainWindow):
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
 
+        self.setup_ui()
+
+    def setup_ui(self):
         self.layout = QHBoxLayout()
         self.central_widget.setLayout(self.layout)
+        self.setup_game_list_and_search()
+        self.setup_details_frame()
+
+        self.load_game_list()
+        self.original_working_directory = os.getcwd()
+        self.center_on_screen()
+
+    def setup_game_list_and_search(self):
+        self.game_list_and_search_layout = QVBoxLayout()
+
+        self.search_bar = QLineEdit()
+        self.search_bar.setFont(QFont("Roboto", 14))
+        self.search_bar.setPlaceholderText("Search by Game or Developer")
+        self.search_bar.textChanged.connect(self.filter_game_list)
+        self.game_list_and_search_layout.addWidget(self.search_bar)
+
         self.game_list_widget = QListWidget()
         self.game_list_widget.setFont(QFont("Roboto", 14))
-        self.layout.addWidget(self.game_list_widget, 1)
+        self.game_list_and_search_layout.addWidget(self.game_list_widget)
 
+        self.layout.addLayout(self.game_list_and_search_layout)
+
+    def setup_details_frame(self):
         self.details_frame = QFrame()
         self.details_frame.setFrameShape(QFrame.StyledPanel)
         self.details_layout = QVBoxLayout(self.details_frame)
-        self.layout.addWidget(self.details_frame, 2)
+
+        self.options_button = QPushButton("...")
+        self.options_button.setFont(QFont("Roboto", 14))
+        self.options_button.setFixedHeight(40)
+        self.options_button.setFixedWidth(40)
+        self.options_menu = QMenu(self)
+        self.uninstall_action = self.options_menu.addAction("Uninstall")
+        self.open_directory_action = self.options_menu.addAction("Open Game Directory")
+        self.open_game_website_action = self.options_menu.addAction("Open Website")
+        self.options_button.setMenu(self.options_menu)
+        self.details_layout.addWidget(self.options_button, alignment=Qt.AlignRight)
+        self.uninstall_action.triggered.connect(self.uninstall_game)
+        self.open_directory_action.triggered.connect(self.open_game_directory)
+        self.open_game_website_action.triggered.connect(self.open_game_website)
+        self.options_button.setVisible(False)
 
         self.icon_label = QLabel()
         self.icon_label.setAlignment(Qt.AlignCenter)
         self.icon_label.setFixedSize(150, 150)
         self.details_layout.addWidget(self.icon_label, alignment=Qt.AlignCenter)
 
+        self.name_and_developer_layout = QVBoxLayout()
         self.name_label = QLabel()
         self.name_label.setStyleSheet("font: bold 24px 'Roboto'; qproperty-alignment: AlignCenter;")
-        self.details_layout.addWidget(self.name_label)
-
+        self.name_and_developer_layout.addWidget(self.name_label, alignment=Qt.AlignCenter)
         self.developer_label = QLabel()
         self.developer_label.setStyleSheet("font: 14px 'Roboto'; qproperty-alignment: AlignCenter;")
-        self.details_layout.addWidget(self.developer_label)
+        self.name_and_developer_layout.addWidget(self.developer_label, alignment=Qt.AlignCenter)
+
+        self.details_layout.addLayout(self.name_and_developer_layout)
 
         self.description_label = QLabel()
         self.description_label.setWordWrap(True)
@@ -63,9 +100,10 @@ class GameLauncher(QMainWindow):
         self.play_button.clicked.connect(self.play_game)
         self.play_button.setFixedHeight(40)
         self.details_layout.addWidget(self.play_button, alignment=Qt.AlignCenter)
+        self.play_button.setVisible(False)
 
-        self.load_game_list()
-        self.original_working_directory = os.getcwd()
+        self.layout.addWidget(self.details_frame, 2)
+        self.options_button.setVisible(False)
 
     def load_game_list(self):
         try:
@@ -99,10 +137,24 @@ class GameLauncher(QMainWindow):
             game_item.setIcon(icon)
         self.game_list_widget.itemClicked.connect(self.update_game_details)
 
+    def filter_game_list(self, filter_text):
+        filter_text = filter_text.lower()
+        self.game_list_widget.clear()
+        for game in self.games:
+            if filter_text in game["name"].lower() or filter_text in game["developer"].lower():
+                game_item = QListWidgetItem(game["name"])
+                self.game_list_widget.addItem(game_item)
+                icon_url = game["icon"]
+                icon_path = os.path.join("icons", f"{game['ID']}.png")
+                if not os.path.exists(icon_path):
+                    self.download_icon(icon_url, "icons", str(game['ID']))
+                icon = QIcon(icon_path)
+                game_item.setIcon(icon)
+        self.game_list_widget.setCurrentRow(0)
+
     def update_game_details(self, item):
         selected_game = item.text()
         game_info = next((game for game in self.games if game["name"] == selected_game), None)
-
         if game_info:
             self.name_label.setText(game_info["name"])
             self.developer_label.setText(game_info["developer"])
@@ -122,10 +174,15 @@ class GameLauncher(QMainWindow):
                     self.play_button.setText("Update")
                 else:
                     self.play_button.setText("Play")
-                self.play_button.setEnabled(True)
             else:
                 self.play_button.setText("Download")
-                self.play_button.setEnabled(True)
+            if "website" in game_info:
+                self.open_game_website_action.setVisible(True)
+                self.open_game_website_action.setToolTip(game_info["website"])
+            else:
+                self.open_game_website_action.setVisible(False)
+            self.play_button.setVisible(True)
+            self.options_button.setVisible(True)
 
     def get_installed_version(self, game_id):
         game_folder = os.path.join("games", str(game_id))
@@ -291,8 +348,37 @@ class GameLauncher(QMainWindow):
             except Exception as e:
                 print("Error uninstalling game:", e)
 
+    def open_game_directory(self):
+        if hasattr(self, 'selected_game_info'):
+            game_info = self.selected_game_info
+            game_id = game_info["ID"]
+            game_folder = os.path.join("games", str(game_id))
+            if os.path.exists(game_folder):
+                try:
+                    os.system(f"xdg-open '{game_folder}'")
+                except Exception as e:
+                    print("Error opening game directory:", e)
+
+    def open_game_website(self):
+        if hasattr(self, 'selected_game_info'):
+            game_info = self.selected_game_info
+            if "website" in game_info:
+                website_url = game_info["website"]
+                try:
+                    os.system(f"xdg-open '{website_url}'")
+                except Exception as e:
+                    print("Error opening the website:", e)
+
     def close_button_clicked(self):
         self.close()
+
+    def center_on_screen(self):
+        screen_geometry = QApplication.desktop().screenGeometry()
+
+        x = (screen_geometry.width() - self.width()) // 2
+        y = (screen_geometry.height() - self.height()) // 2
+
+        self.move(x, y)
 
     def unzip_game(self, zip_file, destination):
         with zipfile.ZipFile(zip_file, "r") as zip_ref:
