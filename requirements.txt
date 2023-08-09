@@ -1,0 +1,5 @@
+feedparser==6.0.10
+PyQt5==5.15.9
+PyQt5_sip==12.12.2
+qt_material==2.14
+semver==3.0.1

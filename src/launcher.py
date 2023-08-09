@@ -9,9 +9,9 @@ import zipfile
 import feedparser
 import semver
 from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem, QLabel, \
-    QPushButton, QFrame, QProgressDialog, QMessageBox, QLineEdit, QMenu, QApplication, QDialog, QTextBrowser
-from PyQt5.QtGui import QFont, QIcon, QDesktopServices
-from PyQt5.QtCore import Qt, QSize, QUrl
+    QPushButton, QFrame, QProgressDialog, QMessageBox, QLineEdit, QMenu, QApplication, QDialog, QTextBrowser, QComboBox
+from PyQt5.QtGui import QFont, QIcon, QColor
+from PyQt5.QtCore import Qt, QSize
 from qt_material import apply_stylesheet
 from src.customs.custom_title_bar import CustomTitleBar
 
@@ -29,6 +29,7 @@ class GameLauncher(QMainWindow):
         self.setMenuWidget(self.title_bar)
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
+        self.favorite_game_ids = self.load_favorite_game_ids()
 
         self.setup_ui()
 
@@ -51,6 +52,15 @@ class GameLauncher(QMainWindow):
         self.search_bar.textChanged.connect(self.filter_game_list)
         self.game_list_and_search_layout.addWidget(self.search_bar)
 
+        self.category_combo = QComboBox()
+        self.category_combo.setStyleSheet("color: white;")
+        self.category_combo.addItem("All")
+        self.category_combo.addItem("Installed")
+        self.category_combo.addItem("Not Installed")
+        self.category_combo.addItem("Favorites")
+        self.category_combo.currentIndexChanged.connect(self.update_game_list_based_on_category)
+        self.game_list_and_search_layout.addWidget(self.category_combo)
+
         self.game_list_widget = QListWidget()
         self.game_list_widget.setFont(QFont("Roboto", 14))
         self.game_list_and_search_layout.addWidget(self.game_list_widget)
@@ -67,17 +77,19 @@ class GameLauncher(QMainWindow):
         self.options_button.setFixedHeight(40)
         self.options_button.setFixedWidth(40)
         self.options_menu = QMenu(self)
-        self.uninstall_action = self.options_menu.addAction("Uninstall")
+        self.updates_action = self.options_menu.addAction("Updates")
+        self.favorite_action = self.options_menu.addAction("Add to Favorites")
         self.open_directory_action = self.options_menu.addAction("Open Game Directory")
         self.open_game_website_action = self.options_menu.addAction("Open Website")
-        self.updates_action = self.options_menu.addAction("Updates")
+        self.uninstall_action = self.options_menu.addAction("Uninstall")
         
         self.options_button.setMenu(self.options_menu)
         self.details_layout.addWidget(self.options_button, alignment=Qt.AlignRight)
-        self.uninstall_action.triggered.connect(self.uninstall_game)
+        self.updates_action.triggered.connect(self.open_updates_rss_reader)
+        self.favorite_action.triggered.connect(self.toggle_favorite)
         self.open_directory_action.triggered.connect(self.open_game_directory)
         self.open_game_website_action.triggered.connect(self.open_game_website)
-        self.updates_action.triggered.connect(self.open_updates_rss_reader)
+        self.uninstall_action.triggered.connect(self.uninstall_game)
         self.options_button.setVisible(False)
 
         self.icon_label = QLabel()
@@ -133,32 +145,85 @@ class GameLauncher(QMainWindow):
     def load_game_list_from_data(self, data):
         self.game_list_widget.clear()
         self.games = data["games"]
-        for game in self.games:
-            game_item = QListWidgetItem(game["name"])
-            self.game_list_widget.addItem(game_item)
-
-            icon_url = game["icon"]
-            icon_path = os.path.join("icons", f"{game['ID']}.png")
-            if not os.path.exists(icon_path):
-                self.download_icon(icon_url, "icons", str(game['ID']))
-            icon = QIcon(icon_path)
-            game_item.setIcon(icon)
+        self.update_game_list_based_on_category()
         self.game_list_widget.itemClicked.connect(self.update_game_details)
+
+    def update_game_list_based_on_category(self):
+        current_category = self.category_combo.currentIndex()
+        self.game_list_widget.clear()
+
+        for game in self.games:
+            if current_category == 0:  # All games
+                self.add_game_item(game)
+            elif current_category == 1:  # Installed games
+                if self.is_game_installed(game["ID"]):
+                    self.add_game_item(game)
+            elif current_category == 2:  # Not Installed games
+                if not self.is_game_installed(game["ID"]):
+                    self.add_game_item(game)
+            elif current_category == 3:  # Favorite games
+                if game["ID"] in self.favorite_game_ids:
+                    self.add_game_item(game)
+
+    def update_game_list_categories(self):
+        selected_category_index = self.category_combo.currentIndex()
+
+        if selected_category_index == 0:  # All games
+            self.load_game_list()
+        elif selected_category_index == 1:  # Installed games
+            self.update_game_list_based_on_category(self.is_game_installed)
+        elif selected_category_index == 2:  # Not Installed games
+            self.update_game_list_based_on_category(lambda game_id: not self.is_game_installed(game_id))
+        elif selected_category_index == 3:  # Favorite games
+            self.update_game_list_based_on_category(lambda game_id: game_id in self.favorite_game_ids)
 
     def filter_game_list(self, filter_text):
         filter_text = filter_text.lower()
         self.game_list_widget.clear()
+
         for game in self.games:
             if filter_text in game["name"].lower() or filter_text in game["developer"].lower():
-                game_item = QListWidgetItem(game["name"])
-                self.game_list_widget.addItem(game_item)
-                icon_url = game["icon"]
-                icon_path = os.path.join("icons", f"{game['ID']}.png")
-                if not os.path.exists(icon_path):
-                    self.download_icon(icon_url, "icons", str(game['ID']))
-                icon = QIcon(icon_path)
-                game_item.setIcon(icon)
+                self.add_game_item(game)
+
+    def add_game_item(self, game):
+        game_item = QListWidgetItem(game["name"])
+        self.game_list_widget.addItem(game_item)
+        icon_url = game["icon"]
+        icon_path = os.path.join("icons", f"{game['ID']}.png")
+        if not os.path.exists(icon_path):
+            self.download_icon(icon_url, "icons", str(game['ID']))
+        icon = QIcon(icon_path)
+        game_item.setIcon(icon)
+        if game["ID"] in self.favorite_game_ids:
+            favorite_label = QLabel(game["name"] + " (Favorite)")
+            favorite_label.setStyleSheet("background-color: #DAA520; color: white; padding: 2px;")
+            game_item.listWidget().setItemWidget(game_item, favorite_label)
+
         self.game_list_widget.setCurrentRow(0)
+
+    def toggle_favorite(self):
+        if hasattr(self, 'selected_game_info'):
+            game_id = self.selected_game_info["ID"]
+            if game_id in self.favorite_game_ids:
+                self.favorite_game_ids.remove(game_id)
+            else:
+                self.favorite_game_ids.append(game_id)
+            self.save_favorite_game_ids(self.favorite_game_ids)
+            self.update_game_details(self.game_list_widget.currentItem())
+
+    def load_favorite_game_ids(self):
+        try:
+            with open("favorites.alauncher", "r") as favorites_file:
+                favorites_data = json.load(favorites_file)
+                return favorites_data.get("favorites", [])
+        except FileNotFoundError:
+            return []
+
+    def save_favorite_game_ids(self, favorite_ids):
+        favorites_data = {"favorites": favorite_ids}
+        with open("favorites.alauncher", "w") as favorites_file:
+            json.dump(favorites_data, favorites_file)
+
 
     def update_game_details(self, item):
         selected_game = item.text()
@@ -197,6 +262,10 @@ class GameLauncher(QMainWindow):
                 self.updates_action.setVisible(True)
             else:
                 self.updates_action.setVisible(False)
+            if game_info["ID"] in self.favorite_game_ids:
+                self.favorite_action.setText("Remove from Favorites")
+            else:
+                self.favorite_action.setText("Add to Favorites")
             self.play_button.setVisible(True)
             self.options_button.setVisible(True)
 
@@ -341,6 +410,10 @@ class GameLauncher(QMainWindow):
                         self.download_game()
             else:
                 self.download_game()
+
+    def is_game_installed(self, game_id):
+        game_folder = os.path.join("games", str(game_id))
+        return os.path.exists(game_folder)
 
     def uninstall_game(self):
         if hasattr(self, 'selected_game_info'):
