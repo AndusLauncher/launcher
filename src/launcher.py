@@ -10,7 +10,7 @@ import feedparser
 import semver
 from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem, QLabel, \
     QPushButton, QFrame, QProgressDialog, QMessageBox, QLineEdit, QMenu, QApplication, QDialog, QTextBrowser, QComboBox
-from PyQt5.QtGui import QFont, QIcon, QColor
+from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtCore import Qt, QSize
 from qt_material import apply_stylesheet
 from src.customs.custom_title_bar import CustomTitleBar
@@ -194,10 +194,6 @@ class GameLauncher(QMainWindow):
             self.download_icon(icon_url, "icons", str(game['ID']))
         icon = QIcon(icon_path)
         game_item.setIcon(icon)
-        if game["ID"] in self.favorite_game_ids:
-            favorite_label = QLabel(game["name"] + " (Favorite)")
-            favorite_label.setStyleSheet("background-color: #DAA520; color: white; padding: 2px;")
-            game_item.listWidget().setItemWidget(game_item, favorite_label)
 
         self.game_list_widget.setCurrentRow(0)
 

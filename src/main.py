@@ -6,7 +6,6 @@ from launcher import GameLauncher
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    app.setStyle("Fusion")
     launcher = GameLauncher()
     launcher.network_manager = QNetworkAccessManager()
     launcher.update_local_games_json()
